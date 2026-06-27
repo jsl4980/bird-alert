@@ -3,41 +3,34 @@
  *
  * TFT:  HSPI 14/13/12   Touch: VSPI 25/32/39  CS33  IRQ36
  *
- * First boot: corner calibration wizard → NVS. Then corner validation UI.
+ * First boot: corner calibration wizard → NVS. Then WiFi setup (if enabled).
  * Library: LovyanGFX (lovyan03)
  * Serial: 115200 — press EN with monitor open if you miss boot lines.
  */
 #include <LovyanGFX.hpp>
 #include "LGFX_Elegoo28.hpp"
 #include "elegoo28_touch_cal.h"
+#if BIRD_ALERT_WIFI_ENABLED
+#include "bird_alert_wifi_prefs.h"
+#include "bird_alert_wifi.h"
+#include "wifi_setup_ui.h"
+#endif
 
 LGFX_Elegoo28 display;
 
 static const int CROSS_HALF = 8;
-static const uint32_t STATUS_LINE_Y = 4;
 static const int CORNER_MARGIN = 20;
 static const int CORNER_TARGET_R = 10;
+
+#if BIRD_ALERT_WIFI_ENABLED
+static BirdAlertWifiStatus g_wifiStatus = {};
+#endif
 
 struct CornerTarget {
   const char *label;
   int32_t x;
   int32_t y;
 };
-
-static void drawBringupScreen(void) {
-  display.fillScreen(TFT_BLACK);
-  display.setTextColor(TFT_GREEN);
-  display.setTextSize(2);
-  display.setCursor(8, 24);
-  display.println("Bird Alert");
-  display.setTextSize(1);
-  display.setTextColor(TFT_WHITE);
-  display.println(ELEGOO28_DISPLAY_NAME);
-  display.println("LovyanGFX + touch");
-  display.setTextColor(TFT_CYAN);
-  display.println("Tap to test touch");
-  display.drawRect(2, 2, display.width() - 4, display.height() - 4, TFT_CYAN);
-}
 
 static void drawTouchMarker(int32_t x, int32_t y, uint16_t color) {
   display.drawFastHLine(x - CROSS_HALF, y, CROSS_HALF * 2 + 1, color);
@@ -215,6 +208,44 @@ static void runCornerValidation(void) {
   delay(2000);
 }
 
+#if BIRD_ALERT_WIFI_ENABLED
+static void setupWifi(void) {
+  char ssid[BIRD_ALERT_WIFI_SSID_MAX + 1] = {0};
+  char pass[BIRD_ALERT_WIFI_PASS_MAX + 1] = {0};
+
+  if (bird_alert_wifi_load(ssid, sizeof(ssid), pass, sizeof(pass)) &&
+      bird_alert_wifi_connect(ssid, pass, 15000)) {
+    Serial.println("wifi: auto-connected from NVS");
+  } else {
+    Serial.println("wifi: no saved creds or connect failed — opening setup UI");
+    wifi_setup_ui_run(display);
+  }
+
+  g_wifiStatus = bird_alert_wifi_status();
+  wifi_setup_ui_draw_home(display, g_wifiStatus);
+}
+
+static void refreshHomeScreen(void) {
+  g_wifiStatus = bird_alert_wifi_status();
+  wifi_setup_ui_draw_home(display, g_wifiStatus);
+}
+#else
+static void drawBringupScreen(void) {
+  display.fillScreen(TFT_BLACK);
+  display.setTextColor(TFT_GREEN);
+  display.setTextSize(2);
+  display.setCursor(8, 24);
+  display.println("Bird Alert");
+  display.setTextSize(1);
+  display.setTextColor(TFT_WHITE);
+  display.println(ELEGOO28_DISPLAY_NAME);
+  display.println("LovyanGFX + touch");
+  display.setTextColor(TFT_CYAN);
+  display.println("Tap to test touch");
+  display.drawRect(2, 2, display.width() - 4, display.height() - 4, TFT_CYAN);
+}
+#endif
+
 void setup() {
   Serial.begin(115200);
   delay(2500);
@@ -244,15 +275,36 @@ void setup() {
   }
 #endif
 
+#if BIRD_ALERT_WIFI_ENABLED
+  setupWifi();
+  Serial.println("Ready — tap WiFi button to change network");
+#else
   drawBringupScreen();
-
   Serial.println("Ready — tap screen to verify");
+#endif
   Serial.flush();
 }
 
 void loop() {
   const uint32_t now = millis();
 
+#if BIRD_ALERT_WIFI_ENABLED
+  static uint32_t lastStatusRefresh;
+  if (now - lastStatusRefresh >= 5000) {
+    lastStatusRefresh = now;
+    refreshHomeScreen();
+  }
+
+  int32_t tx = -1;
+  int32_t ty = -1;
+  if (display.getTouch(&tx, &ty)) {
+    if (wifi_setup_ui_hit_home_wifi_button(tx, ty, display.width(), display.height())) {
+      waitForTouchRelease();
+      wifi_setup_ui_run(display);
+      refreshHomeScreen();
+    }
+  }
+#else
   lgfx::touch_point_t raw;
   const uint8_t rawCount = display.getTouchRaw(&raw, 1);
 
@@ -277,9 +329,10 @@ void loop() {
 
     drawTouchMarker(tx, ty, TFT_GREEN);
     display.setTextColor(TFT_YELLOW, TFT_BLACK);
-    display.setCursor(4, STATUS_LINE_Y);
+    display.setCursor(4, 4);
     display.printf("x=%4ld y=%4ld   ", (long)tx, (long)ty);
   }
+#endif
 
   static uint32_t lastHeartbeat;
   if (now - lastHeartbeat >= 5000) {

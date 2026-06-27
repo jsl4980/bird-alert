@@ -10,6 +10,10 @@ See **[docs/hardware.md](docs/hardware.md)** for MCU, display, GPIO table, and p
 
 See **[docs/recommended-display-stack.md](docs/recommended-display-stack.md)** for **LovyanGFX** vs **TFT_eSPI** vs Adafruit + **XPT2046_Touchscreen_TT** when you need touch aligned to pixels and calibration.
 
+## WiFi setup
+
+See **[docs/wifi-setup.md](docs/wifi-setup.md)** for on-device network selection, password entry, and NVS credential storage.
+
 ## Display bring-up
 
 See **[docs/display-bringup.md](docs/display-bringup.md)** and upload:

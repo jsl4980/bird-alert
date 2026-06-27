@@ -30,6 +30,8 @@ No `User_Setup.h` — board config is in this repo’s headers.
 
 **Later boots:** NVS cal loads silently — straight to the bring-up UI (no wizard, no corner test) unless NVS was cleared or you set `FORCE_CALIBRATE`.
 
+**WiFi (when `BIRD_ALERT_WIFI_ENABLED` is 1):** After touch setup, the device auto-connects using saved credentials or opens the on-device WiFi wizard. See **[wifi-setup.md](wifi-setup.md)**.
+
 Open Serial Monitor @ **115200**, press **EN** if you miss boot lines.
 
 **Note:** `touch driver attached: yes` only means the XPT2046 driver is configured — alignment requires calibration. `touch: yes` in the main loop means a mapped coordinate, not necessarily a correct one.
@@ -45,6 +47,7 @@ Touch alignment uses **LovyanGFX `calibrateTouch()`** plus **NVS storage** (`ele
 | `ELEGOO28_TOUCH_FORCE_CALIBRATE` | Set to **1**, upload once, then back to **0** to re-calibrate |
 | `ELEGOO28_TOUCH_RUN_CORNER_TEST` | Corner validation after a **fresh** wizard only (default **1**; skipped when NVS loads) |
 | `ELEGOO28_TOUCH_DEBUG_RAW` | Print raw ADC on Serial (default **0**) |
+| `BIRD_ALERT_WIFI_ENABLED` | On-device WiFi setup + auto-connect (default **1**); set **0** for display-only debugging |
 
 ### Re-calibrate
 

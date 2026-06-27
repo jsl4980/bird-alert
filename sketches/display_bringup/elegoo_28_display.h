@@ -80,6 +80,12 @@
 
 #define ELEGOO28_DISPLAY_NAME "ELEGOO 2.8\" ILI9341 + XPT2046 cfg1"
 
+// ---------------------------------------------------------------------------
+// WiFi provisioning (on-device touch UI)
+// ---------------------------------------------------------------------------
+/** Set to 0 to skip WiFi setup during pure display debugging. */
+#define BIRD_ALERT_WIFI_ENABLED 1
+
 static inline void elegoo28_display_backlight_on(void) {
 #if ELEGOO28_TFT_BL >= 0
   pinMode(ELEGOO28_TFT_BL, OUTPUT);
