@@ -1,0 +1,15 @@
+# Arduino / ESP32 build artifacts
+build/
+*.elf
+*.bin
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Secrets
+.env
+secrets.h
