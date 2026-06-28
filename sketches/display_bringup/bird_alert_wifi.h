@@ -164,6 +164,11 @@ static inline BirdAlertWifiStatus bird_alert_wifi_status(void) {
   return status;
 }
 
+static inline bool bird_alert_wifi_status_ui_changed(const BirdAlertWifiStatus &a,
+                                                     const BirdAlertWifiStatus &b) {
+  return a.connected != b.connected || strcmp(a.ssid, b.ssid) != 0 || strcmp(a.ip, b.ip) != 0;
+}
+
 static inline const char *bird_alert_wifi_failure_reason(void) {
   switch (WiFi.status()) {
     case WL_NO_SSID_AVAIL:

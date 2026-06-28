@@ -14,10 +14,22 @@ See **[docs/recommended-display-stack.md](docs/recommended-display-stack.md)** f
 
 See **[docs/wifi-setup.md](docs/wifi-setup.md)** for on-device network selection, password entry, and NVS credential storage.
 
+## Device UI
+
+See **[docs/device-ui.md](docs/device-ui.md)** for the home screen, alert / acknowledge flow, Settings hub, and optional device nickname.
+
+## MQTT server
+
+See **[docs/mqtt-server.md](docs/mqtt-server.md)** for Mosquitto install and configuration on Raspberry Pi OS (topics, auth, firewall).
+
+## MQTT on ESP32
+
+See **[docs/mqtt-setup.md](docs/mqtt-setup.md)** for broker defaults (`secrets.h`), on-device MQTT wizard, and NVS storage.
+
 ## Display bring-up
 
 See **[docs/display-bringup.md](docs/display-bringup.md)** and upload:
 
 `sketches/display_bringup/display_bringup.ino`
 
-**Library:** **LovyanGFX** (lovyan03) via Arduino Library Manager.
+**Libraries (Arduino Library Manager):** **LovyanGFX** (lovyan03), **PubSubClient**, **ArduinoJson** (v7).

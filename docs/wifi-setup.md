@@ -47,5 +47,7 @@ Set **`BIRD_ALERT_WIFI_ENABLED`** to **`0`** in [`elegoo_28_display.h`](../sketc
 
 ## Related
 
+- [mqtt-setup.md](mqtt-setup.md) — on-device MQTT broker wizard
+- [mqtt-server.md](mqtt-server.md) — Mosquitto broker on Raspberry Pi OS
 - [display-bringup.md](display-bringup.md) — upload and touch calibration
 - [hardware.md](hardware.md) — ESP32 2.4 GHz Wi-Fi only

@@ -30,7 +30,7 @@ No `User_Setup.h` — board config is in this repo’s headers.
 
 **Later boots:** NVS cal loads silently — straight to the bring-up UI (no wizard, no corner test) unless NVS was cleared or you set `FORCE_CALIBRATE`.
 
-**WiFi (when `BIRD_ALERT_WIFI_ENABLED` is 1):** After touch setup, the device auto-connects using saved credentials or opens the on-device WiFi wizard. See **[wifi-setup.md](wifi-setup.md)**.
+**WiFi (when `BIRD_ALERT_WIFI_ENABLED` is 1):** After touch setup, the device auto-connects using saved credentials or opens the on-device WiFi wizard. See **[wifi-setup.md](wifi-setup.md)**. With MQTT enabled, the home screen follows — see **[device-ui.md](device-ui.md)**.
 
 Open Serial Monitor @ **115200**, press **EN** if you miss boot lines.
 
@@ -92,5 +92,6 @@ TFT uses **HSPI** (**14 / 13 / 12**), not VSPI **18 / 23 / 19**. See **`elegoo_2
 
 ## 6. Related
 
+- [device-ui.md](device-ui.md) — home screen, alerts, Settings hub (end-user reference)
 - [recommended-display-stack.md](recommended-display-stack.md) — why LovyanGFX
 - [hardware.md](hardware.md) — full GPIO table

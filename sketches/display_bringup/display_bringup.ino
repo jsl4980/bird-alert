@@ -13,7 +13,17 @@
 #if BIRD_ALERT_WIFI_ENABLED
 #include "bird_alert_wifi_prefs.h"
 #include "bird_alert_wifi.h"
+#include "bird_alert_wifi_events.h"
 #include "wifi_setup_ui.h"
+#include "bird_alert_device_id.h"
+#include "bird_alert_ui.h"
+#if BIRD_ALERT_MQTT_ENABLED
+#include "bird_alert_mqtt_prefs.h"
+#include "bird_alert_mqtt.h"
+#include "mqtt_setup_ui.h"
+#include "bird_alert_settings_ui.h"
+#include "bird_alert_nickname_prefs.h"
+#endif
 #endif
 
 LGFX_Elegoo28 display;
@@ -23,7 +33,12 @@ static const int CORNER_MARGIN = 20;
 static const int CORNER_TARGET_R = 10;
 
 #if BIRD_ALERT_WIFI_ENABLED
-static BirdAlertWifiStatus g_wifiStatus = {};
+static BirdAlertHomeView g_homeView = {};
+static uint8_t g_homeDirtyMask = BIRD_ALERT_UI_DIRTY_FULL;
+#if BIRD_ALERT_MQTT_ENABLED
+static BirdAlertMqttConfig g_mqttConfig = {};
+static uint32_t g_ackedAtMs = 0;
+#endif
 #endif
 
 struct CornerTarget {
@@ -209,7 +224,179 @@ static void runCornerValidation(void) {
 }
 
 #if BIRD_ALERT_WIFI_ENABLED
+
+static void home_invalidate(uint8_t mask) {
+  g_homeDirtyMask |= mask;
+}
+
+static void home_refresh_if_dirty(void) {
+  if (g_homeDirtyMask == BIRD_ALERT_UI_DIRTY_NONE) {
+    return;
+  }
+  const uint8_t mask = g_homeDirtyMask;
+  g_homeDirtyMask = BIRD_ALERT_UI_DIRTY_NONE;
+  bird_alert_ui_refresh(display, g_homeView, mask);
+}
+
+static void home_on_wifi_link_changed(void) {
+  const BirdAlertWifiStatus wifi = bird_alert_wifi_status();
+  if (!bird_alert_wifi_status_ui_changed(g_homeView.wifi, wifi)) {
+    return;
+  }
+  g_homeView.wifi = wifi;
+#if BIRD_ALERT_MQTT_ENABLED
+  g_homeView.mqttConnected = bird_alert_mqtt_connected();
+#endif
+  home_invalidate(BIRD_ALERT_UI_DIRTY_HEADER | BIRD_ALERT_UI_DIRTY_MAIN);
+}
+
+#if BIRD_ALERT_MQTT_ENABLED
+static void home_on_mqtt_connection_changed(bool connected) {
+  if (g_homeView.mqttConnected == connected) {
+    return;
+  }
+  g_homeView.mqttConnected = connected;
+  home_invalidate(BIRD_ALERT_UI_DIRTY_HEADER | BIRD_ALERT_UI_DIRTY_MAIN);
+}
+#endif
+
+static void home_process_link_events(void) {
+  if (bird_alert_wifi_take_event()) {
+    home_on_wifi_link_changed();
+  }
+#if BIRD_ALERT_MQTT_ENABLED
+  bool mqttConnected = false;
+  if (bird_alert_mqtt_take_connection_event(&mqttConnected)) {
+    home_on_mqtt_connection_changed(mqttConnected);
+  }
+#endif
+}
+
+#if BIRD_ALERT_MQTT_ENABLED
+static void clearActiveAlert(void) {
+  g_homeView.mode = BIRD_ALERT_UI_IDLE;
+  g_homeView.activeAlertId[0] = '\0';
+  g_homeView.activeFrom[0] = '\0';
+  g_homeView.activeAlertTs = 0;
+  g_homeView.ackFrom[0] = '\0';
+  g_ackedAtMs = 0;
+  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN);
+}
+
+static void showAcknowledged(const char *from) {
+  strncpy(g_homeView.ackFrom, from, sizeof(g_homeView.ackFrom) - 1);
+  g_homeView.ackFrom[sizeof(g_homeView.ackFrom) - 1] = '\0';
+  g_homeView.mode = BIRD_ALERT_UI_ACKED;
+  g_ackedAtMs = millis();
+  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN);
+}
+
+static void setShowingAlert(const char *alertId, const char *from, uint32_t ts) {
+  strncpy(g_homeView.activeAlertId, alertId, sizeof(g_homeView.activeAlertId) - 1);
+  g_homeView.activeAlertId[sizeof(g_homeView.activeAlertId) - 1] = '\0';
+  strncpy(g_homeView.activeFrom, from, sizeof(g_homeView.activeFrom) - 1);
+  g_homeView.activeFrom[sizeof(g_homeView.activeFrom) - 1] = '\0';
+  g_homeView.activeAlertTs = ts;
+  g_homeView.mode = BIRD_ALERT_UI_SHOWING;
+  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN);
+}
+
+static void handleMqttEvent(const BirdAlertMqttEvent &event) {
+  const char *selfId = bird_alert_device_id();
+
+  if (strcmp(event.type, "raise") == 0) {
+    if (strcmp(event.from, selfId) == 0) {
+      return;
+    }
+
+    if (g_homeView.mode == BIRD_ALERT_UI_SHOWING && event.ts < g_homeView.activeAlertTs) {
+      return;
+    }
+
+    setShowingAlert(event.alert_id, event.from, event.ts);
+    return;
+  }
+
+  if (strcmp(event.type, "ack") == 0) {
+    if (g_homeView.activeAlertId[0] == '\0' ||
+        strcmp(event.alert_id, g_homeView.activeAlertId) != 0) {
+      return;
+    }
+
+    if (g_homeView.mode == BIRD_ALERT_UI_SENT) {
+      showAcknowledged(event.from);
+      return;
+    }
+
+    if (g_homeView.mode == BIRD_ALERT_UI_SHOWING) {
+      clearActiveAlert();
+    }
+  }
+}
+
+static void pollMqttEvents(void) {
+  BirdAlertMqttEvent event;
+  while (bird_alert_mqtt_poll_event(&event)) {
+    handleMqttEvent(event);
+  }
+}
+
+static void raiseLocalAlert(void) {
+  const uint32_t ts = millis();
+  char alertId[BIRD_ALERT_MQTT_ALERT_ID_MAX] = {0};
+  bird_alert_mqtt_format_alert_id(alertId, sizeof(alertId), ts);
+
+  if (!bird_alert_mqtt_publish_raise(alertId, ts)) {
+    Serial.println("alert: publish raise failed");
+    return;
+  }
+
+  strncpy(g_homeView.activeAlertId, alertId, sizeof(g_homeView.activeAlertId) - 1);
+  g_homeView.activeAlertId[sizeof(g_homeView.activeAlertId) - 1] = '\0';
+  strncpy(g_homeView.activeFrom, bird_alert_device_id(), sizeof(g_homeView.activeFrom) - 1);
+  g_homeView.activeFrom[sizeof(g_homeView.activeFrom) - 1] = '\0';
+  g_homeView.activeAlertTs = ts;
+  g_homeView.mode = BIRD_ALERT_UI_SENT;
+  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN);
+}
+
+static void acknowledgeActiveAlert(void) {
+  if (g_homeView.activeAlertId[0] == '\0') {
+    return;
+  }
+
+  const uint32_t ts = millis();
+  if (bird_alert_mqtt_publish_ack(g_homeView.activeAlertId, ts)) {
+    clearActiveAlert();
+  } else {
+    Serial.println("alert: publish ack failed");
+  }
+}
+
+static void setupMqtt(void) {
+  bird_alert_device_id_init();
+  bird_alert_nickname_load();
+
+  if (!bird_alert_mqtt_load(&g_mqttConfig) || g_mqttConfig.host[0] == '\0') {
+    Serial.println("mqtt: no broker configured — opening setup UI");
+    mqtt_setup_ui_run(display, &g_mqttConfig);
+  } else if (!bird_alert_mqtt_begin(&g_mqttConfig)) {
+    Serial.println("mqtt: connect failed — opening setup UI");
+    mqtt_setup_ui_run(display, &g_mqttConfig);
+  }
+
+  g_homeView = {};
+  g_homeView.mode = BIRD_ALERT_UI_IDLE;
+  g_homeView.wifi = bird_alert_wifi_status();
+  g_homeView.mqttConnected = bird_alert_mqtt_connected();
+  home_invalidate(BIRD_ALERT_UI_DIRTY_FULL);
+  home_refresh_if_dirty();
+}
+#endif
+
 static void setupWifi(void) {
+  bird_alert_wifi_events_init();
+
   char ssid[BIRD_ALERT_WIFI_SSID_MAX + 1] = {0};
   char pass[BIRD_ALERT_WIFI_PASS_MAX + 1] = {0};
 
@@ -221,13 +408,18 @@ static void setupWifi(void) {
     wifi_setup_ui_run(display);
   }
 
-  g_wifiStatus = bird_alert_wifi_status();
-  wifi_setup_ui_draw_home(display, g_wifiStatus);
-}
-
-static void refreshHomeScreen(void) {
-  g_wifiStatus = bird_alert_wifi_status();
-  wifi_setup_ui_draw_home(display, g_wifiStatus);
+#if BIRD_ALERT_MQTT_ENABLED
+  setupMqtt();
+#else
+  bird_alert_device_id_init();
+  bird_alert_nickname_load();
+  g_homeView = {};
+  g_homeView.mode = BIRD_ALERT_UI_IDLE;
+  g_homeView.wifi = bird_alert_wifi_status();
+  g_homeView.mqttConnected = false;
+  home_invalidate(BIRD_ALERT_UI_DIRTY_FULL);
+  home_refresh_if_dirty();
+#endif
 }
 #else
 static void drawBringupScreen(void) {
@@ -277,7 +469,7 @@ void setup() {
 
 #if BIRD_ALERT_WIFI_ENABLED
   setupWifi();
-  Serial.println("Ready — tap WiFi button to change network");
+  Serial.println("Ready — home screen (SPOT A BIRD / Settings)");
 #else
   drawBringupScreen();
   Serial.println("Ready — tap screen to verify");
@@ -289,21 +481,63 @@ void loop() {
   const uint32_t now = millis();
 
 #if BIRD_ALERT_WIFI_ENABLED
-  static uint32_t lastStatusRefresh;
-  if (now - lastStatusRefresh >= 5000) {
-    lastStatusRefresh = now;
-    refreshHomeScreen();
+#if BIRD_ALERT_MQTT_ENABLED
+  bird_alert_mqtt_loop();
+  pollMqttEvents();
+  home_process_link_events();
+
+  if (g_homeView.mode == BIRD_ALERT_UI_ACKED && g_ackedAtMs != 0 &&
+      now - g_ackedAtMs >= BIRD_ALERT_UI_ACKED_MS) {
+    clearActiveAlert();
+  }
+
+  static uint32_t lastPulse;
+  if (g_homeView.mode == BIRD_ALERT_UI_SENT && now - lastPulse >= 500) {
+    lastPulse = now;
+    g_homeView.pulsePhase = (g_homeView.pulsePhase + 1) % 3;
+    home_invalidate(BIRD_ALERT_UI_DIRTY_PULSE);
   }
 
   int32_t tx = -1;
   int32_t ty = -1;
   if (display.getTouch(&tx, &ty)) {
-    if (wifi_setup_ui_hit_home_wifi_button(tx, ty, display.width(), display.height())) {
+    const int32_t w = display.width();
+    const int32_t h = display.height();
+
+    if (g_homeView.mode == BIRD_ALERT_UI_SHOWING && bird_alert_ui_hit_ack_button(tx, ty, w, h)) {
       waitForTouchRelease();
-      wifi_setup_ui_run(display);
-      refreshHomeScreen();
+      acknowledgeActiveAlert();
+    } else if (bird_alert_ui_can_alert(g_homeView) && bird_alert_ui_hit_primary_button(tx, ty, w, h)) {
+      waitForTouchRelease();
+      raiseLocalAlert();
+    } else if (bird_alert_ui_hit_settings_button(tx, ty, w, h)) {
+      waitForTouchRelease();
+      bird_alert_settings_ui_run(display, &g_mqttConfig);
+      g_homeView.wifi = bird_alert_wifi_status();
+      g_homeView.mqttConnected = bird_alert_mqtt_connected();
+      home_invalidate(BIRD_ALERT_UI_DIRTY_FULL);
     }
   }
+
+  home_refresh_if_dirty();
+#else
+  home_process_link_events();
+
+  int32_t tx = -1;
+  int32_t ty = -1;
+  if (display.getTouch(&tx, &ty)) {
+    const int32_t w = display.width();
+    const int32_t h = display.height();
+    if (bird_alert_ui_hit_settings_button(tx, ty, w, h)) {
+      waitForTouchRelease();
+      wifi_setup_ui_run(display);
+      g_homeView.wifi = bird_alert_wifi_status();
+      home_invalidate(BIRD_ALERT_UI_DIRTY_FULL);
+    }
+  }
+
+  home_refresh_if_dirty();
+#endif
 #else
   lgfx::touch_point_t raw;
   const uint8_t rawCount = display.getTouchRaw(&raw, 1);

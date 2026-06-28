@@ -86,6 +86,9 @@
 /** Set to 0 to skip WiFi setup during pure display debugging. */
 #define BIRD_ALERT_WIFI_ENABLED 1
 
+/** Set to 0 to skip MQTT alert features during display/WiFi debugging. */
+#define BIRD_ALERT_MQTT_ENABLED 1
+
 static inline void elegoo28_display_backlight_on(void) {
 #if ELEGOO28_TFT_BL >= 0
   pinMode(ELEGOO28_TFT_BL, OUTPUT);

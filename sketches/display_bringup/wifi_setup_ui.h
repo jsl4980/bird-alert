@@ -519,35 +519,6 @@ static inline bool wifi_setup_ui_run(LGFX_Elegoo28 &display) {
   }
 }
 
-static inline void wifi_setup_ui_draw_home(LGFX_Elegoo28 &display, const BirdAlertWifiStatus &status) {
-  display.fillScreen(TFT_BLACK);
-  display.setTextColor(TFT_GREEN);
-  display.setTextSize(2);
-  display.setCursor(8, 24);
-  display.println("Bird Alert");
-
-  display.setTextSize(1);
-  display.setTextColor(TFT_WHITE);
-  if (status.connected) {
-    display.printf("WiFi: %s\n", status.ssid);
-    display.printf("IP:   %s\n", status.ip);
-    display.printf("RSSI: %d dBm\n", (int)status.rssi);
-  } else {
-    display.setTextColor(TFT_ORANGE);
-    display.println("WiFi: not connected");
-  }
-
-  const int32_t btnX = display.width() - WIFI_UI_HOME_BTN_W - 4;
-  const int32_t btnY = display.height() - WIFI_UI_HOME_BTN_H - 4;
-  display.fillRect(btnX, btnY, WIFI_UI_HOME_BTN_W, WIFI_UI_HOME_BTN_H, TFT_NAVY);
-  display.setTextColor(TFT_WHITE);
-  display.setTextDatum(textdatum_t::middle_center);
-  display.drawString("WiFi", btnX + WIFI_UI_HOME_BTN_W / 2, btnY + WIFI_UI_HOME_BTN_H / 2);
-  display.setTextDatum(textdatum_t::top_left);
-
-  display.drawRect(2, 2, display.width() - 4, display.height() - 4, TFT_CYAN);
-}
-
 static inline bool wifi_setup_ui_hit_home_wifi_button(int32_t tx, int32_t ty, int32_t screenW, int32_t screenH) {
   const WifiSetupRect btn = {screenW - WIFI_UI_HOME_BTN_W - 4, screenH - WIFI_UI_HOME_BTN_H - 4,
                              WIFI_UI_HOME_BTN_W, WIFI_UI_HOME_BTN_H};
