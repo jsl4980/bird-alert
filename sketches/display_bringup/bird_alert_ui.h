@@ -131,6 +131,10 @@ static inline void bird_alert_ui_settings_button_rect(int32_t screenW, int32_t s
   (void)screenW;
 }
 
+static inline int32_t bird_alert_ui_sent_dots_cy(const WifiSetupRect &alertBtn) {
+  return alertBtn.y + alertBtn.h - 12;
+}
+
 static inline void bird_alert_ui_pulse_rect(int32_t screenW, int32_t screenH, WifiSetupRect *out) {
   if (out == nullptr) {
     return;
@@ -138,7 +142,7 @@ static inline void bird_alert_ui_pulse_rect(int32_t screenW, int32_t screenH, Wi
   WifiSetupRect alertBtn;
   bird_alert_ui_primary_button_rect(screenW, screenH, &alertBtn);
   const int32_t cx = screenW / 2;
-  const int32_t cy = alertBtn.y + alertBtn.h + 18;
+  const int32_t cy = bird_alert_ui_sent_dots_cy(alertBtn);
   out->x = cx - 20;
   out->y = cy - 6;
   out->w = 40;
@@ -149,7 +153,7 @@ static inline int32_t bird_alert_ui_pulse_dots_y(int32_t screenW, int32_t screen
   WifiSetupRect alertBtn;
   bird_alert_ui_primary_button_rect(screenW, screenH, &alertBtn);
   (void)screenW;
-  return alertBtn.y + alertBtn.h + 18;
+  return bird_alert_ui_sent_dots_cy(alertBtn);
 }
 
 static inline uint16_t bird_alert_ui_connection_color(const BirdAlertHomeView &view) {
@@ -179,6 +183,10 @@ static inline void bird_alert_ui_draw_header(LGFX_Elegoo28 &display, int32_t w, 
   bird_alert_icon_draw_connection_dot(display, w - BIRD_ALERT_UI_MARGIN - 4, BIRD_ALERT_UI_HEADER_H / 2, dotColor);
 
   display.setTextDatum(textdatum_t::top_left);
+}
+
+static inline void bird_alert_ui_draw_frame_border(LGFX_Elegoo28 &display, int32_t w, int32_t h) {
+  display.drawRect(2, 2, w - 4, h - 4, TFT_CYAN);
 }
 
 static inline void bird_alert_ui_draw_footer(LGFX_Elegoo28 &display, int32_t w, int32_t h) {
@@ -289,7 +297,7 @@ static inline void bird_alert_ui_draw_main(LGFX_Elegoo28 &display, int32_t w, in
     display.setTextSize(1);
     display.setTextColor(TFT_ORANGE);
     display.drawString("Waiting for response...", alertBtn.x + alertBtn.w / 2, alertBtn.y + alertBtn.h / 2 + 10);
-    bird_alert_ui_draw_waiting_dots(display, w / 2, alertBtn.y + alertBtn.h + 18, view.pulsePhase);
+    bird_alert_ui_draw_waiting_dots(display, w / 2, bird_alert_ui_sent_dots_cy(alertBtn), view.pulsePhase);
   } else if (!canAlert) {
     display.setTextSize(1);
     display.setTextColor(TFT_ORANGE);
@@ -338,7 +346,7 @@ static inline void bird_alert_ui_refresh(LGFX_Elegoo28 &display, const BirdAlert
     bird_alert_ui_draw_header(display, w, view);
     bird_alert_ui_draw_footer(display, w, h);
     bird_alert_ui_draw_main(display, w, h, view);
-    display.drawRect(2, 2, w - 4, h - 4, TFT_CYAN);
+    bird_alert_ui_draw_frame_border(display, w, h);
     return;
   }
 
@@ -361,6 +369,10 @@ static inline void bird_alert_ui_refresh(LGFX_Elegoo28 &display, const BirdAlert
 
   if (dirtyMask & BIRD_ALERT_UI_DIRTY_PULSE) {
     bird_alert_ui_draw_pulse(display, w, h, view);
+  }
+
+  if (dirtyMask & (BIRD_ALERT_UI_DIRTY_HEADER | BIRD_ALERT_UI_DIRTY_MAIN | BIRD_ALERT_UI_DIRTY_FOOTER)) {
+    bird_alert_ui_draw_frame_border(display, w, h);
   }
 }
 

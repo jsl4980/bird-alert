@@ -16,6 +16,7 @@
 
 #define BIRD_ALERT_MQTT_TOPIC_EVENTS "bird/events"
 #define BIRD_ALERT_MQTT_KEEPALIVE_SEC 60
+#define BIRD_ALERT_MQTT_EVENT_QUEUE_LEN 8
 
 struct BirdAlertMqttEvent {
   bool valid;
@@ -32,10 +33,33 @@ static bool g_bird_alert_mqtt_subscribed = false;
 static uint32_t g_bird_alert_mqtt_last_reconnect_attempt = 0;
 static const uint32_t BIRD_ALERT_MQTT_RECONNECT_INTERVAL_MS = 5000;
 
-static BirdAlertMqttEvent g_bird_alert_mqtt_pending_event = {};
+static BirdAlertMqttEvent g_bird_alert_mqtt_event_queue[BIRD_ALERT_MQTT_EVENT_QUEUE_LEN] = {};
+static uint8_t g_bird_alert_mqtt_event_q_read = 0;
+static uint8_t g_bird_alert_mqtt_event_q_write = 0;
+static uint8_t g_bird_alert_mqtt_event_q_count = 0;
 static bool g_bird_alert_mqtt_was_connected = false;
 static volatile bool g_bird_alert_mqtt_connection_pending = false;
 static volatile bool g_bird_alert_mqtt_connection_state = false;
+
+static inline void bird_alert_mqtt_event_queue_reset(void) {
+  g_bird_alert_mqtt_event_q_read = 0;
+  g_bird_alert_mqtt_event_q_write = 0;
+  g_bird_alert_mqtt_event_q_count = 0;
+}
+
+static inline void bird_alert_mqtt_event_queue_push(const BirdAlertMqttEvent &event) {
+  if (g_bird_alert_mqtt_event_q_count >= BIRD_ALERT_MQTT_EVENT_QUEUE_LEN) {
+    Serial.println("mqtt: event queue full, dropping oldest");
+    g_bird_alert_mqtt_event_q_read =
+        (g_bird_alert_mqtt_event_q_read + 1) % BIRD_ALERT_MQTT_EVENT_QUEUE_LEN;
+    g_bird_alert_mqtt_event_q_count--;
+  }
+
+  g_bird_alert_mqtt_event_queue[g_bird_alert_mqtt_event_q_write] = event;
+  g_bird_alert_mqtt_event_q_write =
+      (g_bird_alert_mqtt_event_q_write + 1) % BIRD_ALERT_MQTT_EVENT_QUEUE_LEN;
+  g_bird_alert_mqtt_event_q_count++;
+}
 
 static inline void bird_alert_mqtt_notify_connection(bool connected) {
   if (connected == g_bird_alert_mqtt_was_connected) {
@@ -95,10 +119,10 @@ static inline void bird_alert_mqtt_on_message(char *topic, byte *payload, unsign
   strncpy(event.from, from, sizeof(event.from) - 1);
   event.ts = ts;
 
-  g_bird_alert_mqtt_pending_event = event;
+  bird_alert_mqtt_event_queue_push(event);
 
-  Serial.printf("mqtt: event %s alert_id=%s from=%s ts=%lu\n", event.type, event.alert_id, event.from,
-                (unsigned long)event.ts);
+  Serial.printf("mqtt: event %s alert_id=%s from=%s ts=%lu (queued %u)\n", event.type, event.alert_id,
+                event.from, (unsigned long)event.ts, (unsigned)g_bird_alert_mqtt_event_q_count);
 }
 
 static inline bool bird_alert_mqtt_connect_once(void) {
@@ -147,7 +171,7 @@ static inline bool bird_alert_mqtt_begin(const BirdAlertMqttConfig *cfg) {
   }
 
   bird_alert_device_id_init();
-  g_bird_alert_mqtt_pending_event = {};
+  bird_alert_mqtt_event_queue_reset();
   g_bird_alert_mqtt_subscribed = false;
   g_bird_alert_mqtt_last_reconnect_attempt = 0;
   g_bird_alert_mqtt_was_connected = false;
@@ -182,12 +206,14 @@ static inline void bird_alert_mqtt_loop(void) {
 }
 
 static inline bool bird_alert_mqtt_poll_event(BirdAlertMqttEvent *out) {
-  if (out == nullptr || !g_bird_alert_mqtt_pending_event.valid) {
+  if (out == nullptr || g_bird_alert_mqtt_event_q_count == 0) {
     return false;
   }
 
-  *out = g_bird_alert_mqtt_pending_event;
-  g_bird_alert_mqtt_pending_event.valid = false;
+  *out = g_bird_alert_mqtt_event_queue[g_bird_alert_mqtt_event_q_read];
+  g_bird_alert_mqtt_event_q_read =
+      (g_bird_alert_mqtt_event_q_read + 1) % BIRD_ALERT_MQTT_EVENT_QUEUE_LEN;
+  g_bird_alert_mqtt_event_q_count--;
   return true;
 }
 

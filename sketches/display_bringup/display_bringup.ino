@@ -288,7 +288,7 @@ static void showAcknowledged(const char *from) {
   g_homeView.ackFrom[sizeof(g_homeView.ackFrom) - 1] = '\0';
   g_homeView.mode = BIRD_ALERT_UI_ACKED;
   g_ackedAtMs = millis();
-  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN);
+  home_invalidate(BIRD_ALERT_UI_DIRTY_MAIN | BIRD_ALERT_UI_DIRTY_FOOTER);
 }
 
 static void setShowingAlert(const char *alertId, const char *from, uint32_t ts) {
